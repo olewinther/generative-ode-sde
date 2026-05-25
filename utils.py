@@ -188,14 +188,21 @@ class Variational(nn.Module):
 
     def drift(self, x, mode="ode", sigma_net=None):
         alpha, beta = self._compute_forward()
-        d_alpha_dt = torch.autograd.grad(alpha, self.t, grad_outputs=torch.ones_like(alpha), create_graph=True)[0]
-        d_beta_dt = torch.autograd.grad(beta, self.t, grad_outputs=torch.ones_like(beta), create_graph=True)[0]
+        if hasattr(self.alpha_net, 'd_dt'):
+            d_alpha_dt = self.alpha_net.d_dt(self.y, self.t)
+            d_beta_dt  = self.beta_net.d_dt(self.y, self.t)
+        else:
+            d_alpha_dt = torch.autograd.grad(alpha, self.t, grad_outputs=torch.ones_like(alpha), create_graph=True)[0]
+            d_beta_dt  = torch.autograd.grad(beta,  self.t, grad_outputs=torch.ones_like(beta),  create_graph=True)[0]
         drift_term = d_alpha_dt + d_beta_dt * (x - alpha) / beta
         if mode == "ode":
             return drift_term
         sigma = sigma_net(x, self.t)
         sigma_squared = sigma ** 2
-        d_sigma2_dx = torch.autograd.grad(sigma_squared, x, grad_outputs=torch.ones_like(sigma_squared), create_graph=True)[0]
+        if hasattr(sigma_net, 'd_sq_dx'):
+            d_sigma2_dx = sigma_net.d_sq_dx(x, self.t)
+        else:
+            d_sigma2_dx = torch.autograd.grad(sigma_squared, x, grad_outputs=torch.ones_like(sigma_squared), create_graph=True)[0]
         score = -(x - alpha) / beta ** 2
         if mode == "backward sde":
             drift_term -= d_sigma2_dx / 2 + (sigma_squared / 2) * score
